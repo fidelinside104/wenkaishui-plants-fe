@@ -1,0 +1,183 @@
+---
+import Layout from "../components/Layout.astro";
+
+export const prerender = true;
+---
+
+<Layout title="Plants">
+  <section class="plants">
+    <header class="plants-bar">
+      <p class="plants-title">Plants</p>
+      <p class="plants-status" data-status>Loading...</p>
+      <div class="plants-actions">
+        <button type="button" data-save>Save layout</button>
+        <button type="button" data-load>Load layout</button>
+        <button type="button" data-reset>Reset</button>
+      </div>
+    </header>
+    <perspective-viewer data-viewer theme="Pro Dark"></perspective-viewer>
+  </section>
+</Layout>
+
+<script>
+  import { createClient } from "@supabase/supabase-js";
+  import perspective from "@perspective-dev/client";
+  import perspective_viewer from "@perspective-dev/viewer";
+  import "@perspective-dev/viewer-datagrid";
+  import "@perspective-dev/viewer-charts";
+  import "@perspective-dev/viewer/dist/css/themes.css";
+  import SERVER_WASM from "@perspective-dev/server/dist/wasm/perspective-server.wasm?url";
+  import CLIENT_WASM from "@perspective-dev/viewer/dist/wasm/perspective-viewer.wasm?url";
+
+  const LAYOUT_KEY = "plants-fe:layout";
+  const TABLE_NAME = "sensor_readings";
+  const PAGE_SIZE = 1000; // PostgREST caps a single response at 1000 rows
+
+  const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL;
+  const supabaseKey = import.meta.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  const statusEl = document.querySelector<HTMLElement>("[data-status]")!;
+  const viewer = document.querySelector<any>("[data-viewer]")!;
+
+  const schema = {
+    id: "integer",
+    recorded_at: "datetime",
+    sensor_id: "string",
+    plant: "string",
+    soil_moisture: "float",
+    humidity: "float",
+    temperature: "float",
+    battery: "integer",
+    dry: "boolean",
+    linkquality: "integer",
+  } as const;
+
+  const defaultLayout = {
+    table: TABLE_NAME,
+    plugin: "Y Line",
+    group_by: ["recorded_at"],
+    split_by: ["plant"],
+    columns: ["soil_moisture"],
+    aggregates: { soil_moisture: "avg" },
+  };
+
+  async function fetchRows(): Promise<Record<string, unknown>[]> {
+    if (!supabaseUrl || !supabaseKey) {
+      statusEl.textContent = "No Supabase env vars set, showing sample data";
+      return Array.from({ length: 48 }, (_, i) => ({
+        id: i + 1,
+        recorded_at: Date.UTC(2026, 9, 20, i),
+        sensor_id: i % 2 ? "sample-sensor-a" : "sample-sensor-b",
+        plant: i % 2 ? "Sample plant A" : "Sample plant B",
+        soil_moisture: 30 + Math.round(10 * Math.sin(i / 6)),
+        humidity: 60,
+        temperature: 21.5,
+        battery: 75,
+        dry: false,
+        linkquality: 232,
+      }));
+    }
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const rows: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("sensor_readings")
+        .select("*")
+        .order("id")
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      rows.push(...data);
+      if (data.length < PAGE_SIZE) break;
+    }
+    // Unmapped sensors fall back to their sensor_id as the plant name
+    const { data: plants } = await supabase.from("sensor_plants").select("*");
+    const plantBySensor = new Map((plants ?? []).map((p) => [p.sensor_id, p.plant_name]));
+    statusEl.textContent = `${rows.length} readings`;
+    return rows.map((r) => ({
+      ...r,
+      plant: plantBySensor.get(r.sensor_id as string) ?? r.sensor_id,
+      recorded_at: Date.parse(r.recorded_at as string),
+    }));
+  }
+
+  async function main() {
+    await Promise.all([
+      perspective.init_server(fetch(SERVER_WASM)),
+      perspective_viewer.init_client(fetch(CLIENT_WASM)),
+    ]);
+    const worker = await perspective.worker();
+    const rows = await fetchRows();
+    const table = await worker.table(schema, { index: "id", name: TABLE_NAME });
+    await table.update(rows);
+    await viewer.load(worker);
+
+    const saved = localStorage.getItem(LAYOUT_KEY);
+    await viewer.restore(saved ? JSON.parse(saved) : defaultLayout);
+
+    document.querySelector("[data-save]")!.addEventListener("click", async () => {
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(await viewer.save()));
+    });
+    document.querySelector("[data-load]")!.addEventListener("click", async () => {
+      const s = localStorage.getItem(LAYOUT_KEY);
+      if (s) await viewer.restore(JSON.parse(s));
+    });
+    document.querySelector("[data-reset]")!.addEventListener("click", async () => {
+      localStorage.removeItem(LAYOUT_KEY);
+      await viewer.reset();
+      await viewer.restore(defaultLayout);
+    });
+  }
+
+  main().catch((err) => {
+    console.error(err);
+    statusEl.textContent = `Failed to load: ${err?.message ?? err}`;
+  });
+</script>
+
+<style>
+  :global(body) {
+    margin: 0;
+    background: #242526;
+  }
+
+  .plants {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    font-family: system-ui, sans-serif;
+    color: #f0f0f0;
+  }
+
+  .plants-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .plants-title {
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .plants-status {
+    margin: 0;
+    opacity: 0.7;
+    flex: 1;
+  }
+
+  .plants-actions button {
+    margin-left: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid #666;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  perspective-viewer {
+    flex: 1;
+    min-height: 0;
+  }
+</style>

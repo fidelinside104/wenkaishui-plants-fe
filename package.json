@@ -1,0 +1,29 @@
+{
+  "name": "wenkaishui-plants-fe",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.2",
+    "@astrojs/netlify": "^6.1.0",
+    "@perspective-dev/client": "^5.6.1",
+    "@perspective-dev/server": "^5.6.1",
+    "@perspective-dev/viewer": "^5.6.1",
+    "@perspective-dev/viewer-charts": "^5.6.1",
+    "@perspective-dev/viewer-datagrid": "^5.6.1",
+    "@supabase/supabase-js": "^2.48.1",
+    "@tailwindcss/vite": "^4.1.18",
+    "astro": "^5.15.9",
+    "typescript": "^5.6.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.16",
+    "tailwindcss": "^4.1.18"
+  }
+}
