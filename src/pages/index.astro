@@ -4,10 +4,10 @@ import Layout from "../components/Layout.astro";
 export const prerender = true;
 ---
 
-<Layout title="Plants">
+<Layout title="Thirsty Plants">
   <section class="plants">
     <header class="plants-bar">
-      <p class="plants-title">Plants</p>
+      <p class="plants-title">Thirsty Plants</p>
       <p class="plants-status" data-status>Loading...</p>
       <div class="plants-actions">
         <button type="button" data-save>Save layout</button>
@@ -92,12 +92,18 @@ export const prerender = true;
     // Unmapped sensors fall back to their sensor_id as the plant name
     const { data: plants } = await supabase.from("sensor_plants").select("*");
     const plantBySensor = new Map((plants ?? []).map((p) => [p.sensor_id, p.plant_name]));
-    statusEl.textContent = `${rows.length} readings`;
-    return rows.map((r) => ({
+    const mapped = rows.map((r) => ({
       ...r,
       plant: plantBySensor.get(r.sensor_id as string) ?? r.sensor_id,
       recorded_at: Date.parse(r.recorded_at as string),
     }));
+    const last = Math.max(...mapped.map((r) => r.recorded_at));
+    const lastText = new Date(last).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    statusEl.textContent = `${mapped.length} readings in total, last reading at ${lastText}`;
+    return mapped;
   }
 
   async function main() {
@@ -150,30 +156,64 @@ export const prerender = true;
 
   .plants-bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 1rem;
-    padding: 0.5rem 1rem;
+    gap: 0.25rem 0.75rem;
+    padding: 0.25rem 1rem;
+    background: #e6efe1;
+    color: #1f5c33;
+    border-bottom: 1px solid #b9cfb4;
+    font-size: 0.875rem;
+    line-height: 1.25;
   }
 
   .plants-title {
-    font-weight: 600;
+    font-weight: 700;
     margin: 0;
   }
 
   .plants-status {
     margin: 0;
-    opacity: 0.7;
     flex: 1;
   }
 
+  .plants-actions {
+    display: flex;
+    gap: 0.4rem;
+  }
+
   .plants-actions button {
-    margin-left: 0.5rem;
-    padding: 0.25rem 0.75rem;
+    padding: 0.1rem 0.6rem;
     border-radius: 4px;
-    border: 1px solid #666;
+    border: 1px solid #1f5c33;
     background: transparent;
     color: inherit;
+    font: inherit;
     cursor: pointer;
+  }
+
+  .plants-actions button:hover {
+    background: rgba(31, 92, 51, 0.12);
+  }
+
+  @media (max-width: 600px) {
+    .plants-bar {
+      justify-content: space-between;
+      font-size: 0.8rem;
+    }
+
+    .plants-title {
+      order: 1;
+    }
+
+    .plants-actions {
+      order: 2;
+    }
+
+    .plants-status {
+      order: 3;
+      flex: 1 1 100%;
+    }
   }
 
   perspective-viewer {
